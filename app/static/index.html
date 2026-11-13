@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aria · BrightSmile voice receptionist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#EEF3F4; --panel:#FFFFFF; --ink:#16232B; --muted:#5B6B73; --line:#D6E0E3;
+  --mint:#0E7C6B; --mint-soft:#D5EFEA;
+  --stt:#3457C4; --llm:#0E7C6B; --tool:#A8650E; --tts:#7A48B5;
+  --danger:#B42318;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0F1A1F; --panel:#16242B; --ink:#E6EEF0; --muted:#94A6AD; --line:#27373E;
+    --mint:#3CC4AC; --mint-soft:#163B36;
+    --stt:#7E9BF2; --llm:#3CC4AC; --tool:#E3A04A; --tts:#B693E6; --danger:#F07A6E;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Atkinson Hyperlegible",system-ui,sans-serif}
+h1,h2{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0;letter-spacing:-.01em}
+.wrap{max-width:1120px;margin:0 auto;padding:32px 20px 48px;display:grid;grid-template-columns:340px 1fr;gap:28px}
+@media (max-width:860px){.wrap{grid-template-columns:1fr}}
+
+/* left: the talk button is the one bold element */
+.call{position:sticky;top:24px;align-self:start;display:flex;flex-direction:column;gap:20px}
+.call h1{font-size:2.1rem;line-height:1.1}
+.call p{margin:0;color:var(--muted)}
+.mic-zone{display:grid;place-items:center;padding:28px 0}
+.mic{position:relative;width:184px;height:184px;border-radius:50%;border:0;cursor:pointer;
+  background:var(--mint);color:#fff;font:700 1.05rem "Bricolage Grotesque",sans-serif;
+  box-shadow:0 0 0 calc(var(--lvl,0) * 34px) color-mix(in srgb,var(--mint) 22%,transparent);
+  transition:box-shadow .08s linear, transform .15s}
+.mic:hover{transform:scale(1.02)}
+.mic:focus-visible{outline:3px solid var(--ink);outline-offset:6px}
+.mic[data-state="recording"]{background:var(--danger);
+  box-shadow:0 0 0 calc(var(--lvl,0) * 34px) color-mix(in srgb,var(--danger) 25%,transparent)}
+.mic[data-state="thinking"]{background:var(--muted);cursor:progress}
+.mic[data-state="speaking"]{background:var(--tts)}
+.mic svg{display:block;margin:0 auto 8px}
+.status{text-align:center;color:var(--muted);min-height:1.5em}
+.typed{display:flex;gap:8px}
+.typed input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit}
+.typed button,.ghost{padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;cursor:pointer}
+.typed button:focus-visible,.ghost:focus-visible,.typed input:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.meta{font-size:.85rem;color:var(--muted)}
+.try{font-size:.92rem;color:var(--muted);border-left:3px solid var(--mint);padding-left:12px}
+.try b{color:var(--ink);font-weight:700}
+
+/* right: conversation with pipeline trace per turn */
+.log{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 24px;min-height:60vh}
+.log-head{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--line)}
+.log-head h2{font-size:1.15rem}
+.empty{color:var(--muted);padding:48px 0;text-align:center}
+.turn{padding:20px 0;border-bottom:1px solid var(--line)}
+.turn:last-child{border-bottom:0}
+.you,.aria{max-width:62ch}
+.who{font-weight:700;font-size:.9rem;margin-right:6px}
+.you .who{color:var(--stt)} .aria .who{color:var(--mint)}
+.aria{margin-top:8px}
+.tools{margin:10px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.tools details{font-size:.88rem;border:1px solid var(--line);border-left:3px solid var(--tool);border-radius:6px;padding:6px 10px}
+.tools summary{cursor:pointer;color:var(--tool);font-weight:700}
+.tools pre{white-space:pre-wrap;word-break:break-word;margin:6px 0 0;font:12.5px/1.45 ui-monospace,Menlo,monospace;color:var(--muted);max-height:220px;overflow:auto}
+.bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:12px;background:var(--line)}
+.bar span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.8rem;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.err{color:var(--danger)}
+@media (prefers-reduced-motion:reduce){.mic{transition:none}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="call" aria-label="Talk to Aria">
+    <div>
+      <h1>Aria, BrightSmile’s voice receptionist</h1>
+      <p>Ask about treatments and prices, or book a visit. Speech goes through STT, an LLM with tools and a knowledge base, then TTS.</p>
+    </div>
+    <div class="mic-zone">
+      <button class="mic" id="mic" data-state="idle" aria-live="polite">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
+        <span id="micLabel">Tap to talk</span>
+      </button>
+    </div>
+    <div class="status" id="status">Tap the button or hold the space bar.</div>
+    <form class="typed" id="typed">
+      <input id="textIn" placeholder="Or type a message" aria-label="Type a message" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+    <p class="try">Try saying <b>“How much is a root canal?”</b>, then <b>“Book me a cleaning tomorrow at 4 pm, my name is Ravi.”</b></p>
+    <div class="meta" id="meta">Connecting…</div>
+  </section>
+
+  <section class="log" aria-label="Conversation">
+    <div class="log-head">
+      <h2>Conversation</h2>
+      <button class="ghost" id="reset">Start over</button>
+    </div>
+    <div id="turns"><div class="empty">Nothing yet. Say hello to Aria.</div></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const mic = $("#mic"), micLabel = $("#micLabel"), statusEl = $("#status"), turns = $("#turns");
+let sessionId = crypto.randomUUID();
+let recorder, chunks = [], stream, audioCtx, analyser, raf, player;
+
+const STAGES = [["stt_ms","Speech to text","--stt"],["llm_ms","LLM","--llm"],["tools_ms","Tools","--tool"],["tts_ms","Text to speech","--tts"]];
+
+function setState(state, label, msg){
+  mic.dataset.state = state; micLabel.textContent = label; if (msg !== undefined) statusEl.textContent = msg;
+}
+
+fetch("/api/health").then(r => r.json()).then(h => {
+  $("#meta").textContent = `LLM ${h.llm} · STT ${h.stt} · TTS ${h.tts} · knowledge base ${h.kb_chunks} chunks (${h.kb_mode})`;
+}).catch(() => $("#meta").textContent = "Server not reachable. Is uvicorn running?");
+
+function pickMime(){
+  for (const m of ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg"]) if (MediaRecorder.isTypeSupported(m)) return m;
+  return "";
+}
+
+async function startRecording(){
+  if (mic.dataset.state === "thinking") return;
+  stopSpeaking();
+  try { stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
+  catch { statusEl.textContent = "Microphone blocked. Allow mic access in the browser, or type below."; return; }
+  const mime = pickMime();
+  recorder = new MediaRecorder(stream, mime ? {mimeType:mime} : undefined);
+  chunks = [];
+  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  recorder.onstop = sendAudio;
+  recorder.start();
+  meter(stream);
+  setState("recording","Tap to send","Listening…");
+}
+
+function stopRecording(){
+  if (recorder && recorder.state === "recording"){ recorder.stop(); stream.getTracks().forEach(t => t.stop()); }
+  cancelAnimationFrame(raf); mic.style.setProperty("--lvl", 0);
+}
+
+function meter(s){
+  audioCtx = audioCtx || new AudioContext();
+  analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
+  audioCtx.createMediaStreamSource(s).connect(analyser);
+  const buf = new Uint8Array(analyser.fftSize);
+  const tick = () => {
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0; for (const v of buf) sum += ((v-128)/128)**2;
+    mic.style.setProperty("--lvl", Math.min(1, Math.sqrt(sum/buf.length)*6).toFixed(2));
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+async function sendAudio(){
+  const blob = new Blob(chunks, {type: recorder.mimeType || "audio/webm"});
+  if (blob.size < 1500){ setState("idle","Tap to talk","That was too short. Try again."); return; }
+  const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
+  const fd = new FormData();
+  fd.append("audio", blob, `speech.${ext}`); fd.append("session_id", sessionId);
+  await callApi("/api/voice", {method:"POST", body:fd});
+}
+
+async function sendText(text){
+  await callApi("/api/chat", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({text, session_id: sessionId})});
+}
+
+async function callApi(url, opts){
+  setState("thinking","Thinking…","Working on it…");
+  try {
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    if (!data.transcript){ setState("idle","Tap to talk","I didn’t catch any speech. Try again."); return; }
+    renderTurn(data); speak(data);
+  } catch (e) {
+    renderError(e.message); setState("idle","Tap to talk","Something failed. Details are in the conversation.");
+  }
+}
+
+function speak(data){
+  const done = () => setState("idle","Tap to talk","Your turn.");
+  setState("speaking","Tap to interrupt","Aria is speaking…");
+  if (data.audio_b64){
+    player = new Audio(`data:${data.mime};base64,${data.audio_b64}`);
+    player.onended = done; player.play().catch(done);
+  } else if ("speechSynthesis" in window){
+    const u = new SpeechSynthesisUtterance(data.reply); u.lang = "en-IN"; u.rate = 1.05;
+    u.onend = done; speechSynthesis.speak(u);
+  } else done();
+}
+function stopSpeaking(){ if (player){ player.pause(); player = null; } if ("speechSynthesis" in window) speechSynthesis.cancel(); }
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function renderTurn(d){
+  turns.querySelector(".empty")?.remove();
+  const t = d.timings || {}, total = STAGES.reduce((a,[k]) => a + (t[k]||0), 0) || 1;
+  // LLM time shown excludes tool time so the bar segments add up.
+  const seg = {...t, llm_ms: t.llm_ms || 0};
+  const tools = (d.tool_calls||[]).map(c => `<li><details><summary>${esc(c.name)} · ${c.ms} ms</summary><pre>args: ${esc(c.arguments)}\n\n${esc(JSON.stringify(c.result,null,2))}</pre></details></li>`).join("");
+  const el = document.createElement("article"); el.className = "turn";
+  el.innerHTML = `
+    <div class="you"><span class="who">You</span>${esc(d.transcript)}</div>
+    ${tools ? `<ul class="tools">${tools}</ul>` : ""}
+    <div class="aria"><span class="who">Aria</span>${esc(d.reply)}</div>
+    <div class="bar" role="img" aria-label="Latency breakdown, ${t.total_ms} ms total">
+      ${STAGES.map(([k,,c]) => `<span style="width:${(seg[k]||0)/total*100}%;background:var(${c})"></span>`).join("")}
+    </div>
+    <div class="legend">${STAGES.map(([k,n,c]) => `<span><i style="background:var(${c})"></i>${n} ${seg[k]||0} ms</span>`).join("")}<span>Total ${t.total_ms} ms</span></div>`;
+  turns.prepend(el);
+}
+function renderError(msg){
+  turns.querySelector(".empty")?.remove();
+  const el = document.createElement("article"); el.className = "turn err"; el.textContent = msg; turns.prepend(el);
+}
+
+mic.addEventListener("click", () => {
+  const s = mic.dataset.state;
+  if (s === "recording") stopRecording();
+  else if (s === "speaking"){ stopSpeaking(); setState("idle","Tap to talk","Stopped. Your turn."); }
+  else if (s === "idle") startRecording();
+});
+let spaceDown = false;
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && !spaceDown && document.activeElement.tagName !== "INPUT"){ e.preventDefault(); spaceDown = true; startRecording(); }
+});
+document.addEventListener("keyup", e => { if (e.code === "Space" && spaceDown){ spaceDown = false; stopRecording(); } });
+$("#typed").addEventListener("submit", e => {
+  e.preventDefault(); const v = $("#textIn").value.trim(); if (!v || mic.dataset.state === "thinking") return;
+  $("#textIn").value = ""; stopSpeaking(); sendText(v);
+});
+$("#reset").addEventListener("click", async () => {
+  const fd = new FormData(); fd.append("session_id", sessionId);
+  await fetch("/api/reset", {method:"POST", body:fd}).catch(()=>{});
+  sessionId = crypto.randomUUID(); stopSpeaking();
+  turns.innerHTML = '<div class="empty">Nothing yet. Say hello to Aria.</div>';
+  setState("idle","Tap to talk","Fresh start. Tap to talk.");
+});
+</script>
+</body>
+</html>
